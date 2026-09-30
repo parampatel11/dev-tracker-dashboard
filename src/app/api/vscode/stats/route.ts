@@ -1,32 +1,55 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI!;
+export const dynamic = 'force-dynamic';
 
-// Connect to MongoDB if not already connected
-if (!mongoose.connection.readyState) {
-  mongoose.connect(MONGODB_URI);
+const TelemetrySchema = new mongoose.Schema({
+  date: { type: String, required: true },
+  filesModified: { type: Number, default: 0 },
+  languages: [
+    {
+      name: { type: String, required: true },
+      timeSeconds: { type: Number, default: 0 }
+    }
+  ]
+});
+
+const Telemetry = mongoose.models.Telemetry || mongoose.model('Telemetry', TelemetrySchema);
+
+async function connectDB() {
+  if (mongoose.connection.readyState >= 1) return;
+  const MONGODB_URI = process.env.MONGODB_URI;
+  if (!MONGODB_URI) throw new Error('Missing MONGODB_URI in environment variables');
+  await mongoose.connect(MONGODB_URI);
 }
 
-// Define the schema to match the data we sent from the extension
-const StatSchema = new mongoose.Schema({
-  timeSeconds: Number,
-  filesModified: Number,
-  foldersCreated: Number,
-  language: String,
-  createdAt: { type: Date, default: Date.now }
-}, { collection: 'vscodestats' });
-
-// Use existing model or create a new one
-const Stat = mongoose.models.Stat || mongoose.model('Stat', StatSchema);
-
+// GET: Serves data to FileActivityList and LanguageDonutChart
 export async function GET() {
   try {
-    // Fetch the latest 100 coding sessions, sorted by newest first
-    const stats = await Stat.find({}).sort({ createdAt: -1 }).limit(100);
-    return NextResponse.json(stats);
-  } catch (error) {
-    console.error('Database fetch error:', error);
-    return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
+    await connectDB();
+    // Fetch recent telemetry records from MongoDB
+    const records = await Telemetry.find({}).sort({ date: -1 }).limit(30);
+
+    // If no records exist yet in MongoDB, return a sample placeholder array so the UI lights up immediately
+    if (!records || records.length === 0) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      return NextResponse.json([
+        {
+          date: todayStr,
+          filesModified: 5,
+          languages: [
+            { name: 'TypeScript', timeSeconds: 7200 },
+            { name: 'React', timeSeconds: 5400 },
+            { name: 'JavaScript', timeSeconds: 1800 },
+            { name: 'JSON', timeSeconds: 900 }
+          ]
+        }
+      ]);
+    }
+
+    return NextResponse.json(records);
+  } catch (error: any) {
+    console.error('API /vscode/stats Error:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
