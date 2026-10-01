@@ -63,23 +63,34 @@ export default function GitHubDashboard() {
       .slice(0, 15);
   }, [data, selectedDate]);
 
-  const groupedMonths = useMemo(() => {
+const groupedMonths = useMemo(() => {
     if (!data?.contributions) return [];
     
+    // 1. Calculate the exactly allowed 3 months (Current, -1 month, -2 months)
+    const allowedMonths = [2, 1, 0].map(offset => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - offset);
+      return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    });
+    
     const monthsMap = new Map();
+    
+    // 2. Map the data, but skip anything outside of the allowed 3 months
     data.contributions.forEach((day: any) => {
       const dateObj = new Date(day.date + 'T12:00:00'); 
       const monthYear = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
       
-      if (!monthsMap.has(monthYear)) {
-        monthsMap.set(monthYear, { name: monthYear, days: [] });
+      // Only push the day if its month matches our allowed list
+      if (allowedMonths.includes(monthYear)) {
+        if (!monthsMap.has(monthYear)) {
+          monthsMap.set(monthYear, { name: monthYear, days: [] });
+        }
+        monthsMap.get(monthYear).days.push(day);
       }
-      monthsMap.get(monthYear).days.push(day);
     });
     
     return Array.from(monthsMap.values());
   }, [data]);
-
   if (error) {
     return (
       <motion.div 
@@ -107,7 +118,7 @@ export default function GitHubDashboard() {
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full">
+    <div id='git' className="flex flex-col gap-6 w-full">
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         
         {/* Left: Profile & Glass Stats */}

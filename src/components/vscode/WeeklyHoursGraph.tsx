@@ -25,14 +25,16 @@ const generateDateRange = (timeframe: '7D' | '30D' | '90D') => {
     for (let i = 0; i < 7; i++) {
       const d = new Date(startOfWeek);
       d.setDate(startOfWeek.getDate() + i);
-      dates.push(d.toISOString().split('T')[0]);
+      // Format as YYYY-MM-DD using your local timezone
+      dates.push(d.toLocaleDateString('en-CA'));
     }
   } else {
     const days = timeframe === '30D' ? 30 : 90;
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      dates.push(d.toISOString().split('T')[0]);
+      // Format as YYYY-MM-DD using your local timezone
+      dates.push(d.toLocaleDateString('en-CA'));
     }
   }
   return dates;
@@ -43,11 +45,11 @@ export default function WeeklyHoursGraph() {
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [timeframe, setTimeframe] = useState<'7D' | '30D' | '90D'>('7D');
-  
+
   // Date Search State
   const [dailyMap, setDailyMap] = useState<Record<string, number>>({});
   const [searchDate, setSearchDate] = useState<string>('');
-  
+
   // Custom Calendar Popover State
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [calendarViewDate, setCalendarViewDate] = useState(new Date());
@@ -64,7 +66,9 @@ export default function WeeklyHoursGraph() {
 
         data.forEach((doc: any) => {
           if (doc.date) {
-            totals[doc.date] = (totals[doc.date] || 0) + (doc.totalTimeSeconds || 0);
+            // If totalTimeSeconds is missing, calculate it by summing the language times
+            const fallbackTime = doc.languages?.reduce((acc: number, lang: any) => acc + (lang.timeSeconds || 0), 0) || 0;
+            totals[doc.date] = (totals[doc.date] || 0) + (doc.totalTimeSeconds || fallbackTime);
           }
         });
 
@@ -75,8 +79,8 @@ export default function WeeklyHoursGraph() {
         const formattedData = dateRange.map((dateStr) => {
           const seconds = totals[dateStr] || 0;
           const dateObj = new Date(dateStr);
-          
-          const label = timeframe === '7D' 
+
+          const label = timeframe === '7D'
             ? dateObj.toLocaleDateString('en-US', { weekday: 'short' })
             : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -116,7 +120,7 @@ export default function WeeklyHoursGraph() {
     setIsCalendarOpen(false);
   };
 
-  const formattedSearchDate = searchDate 
+  const formattedSearchDate = searchDate
     ? new Date(searchDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
 
@@ -131,19 +135,19 @@ export default function WeeklyHoursGraph() {
   return (
     <div className="h-[32rem] rounded-2xl border border-white/10 bg-[#141414]/90 backdrop-blur-md p-6 sm:p-8 flex flex-col relative shadow-2xl overflow-hidden group">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 via-yellow-400 to-green-500 opacity-80" />
-      
+
       {/* Header & Controls */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center z-10 mb-6 gap-6 border-b border-white/5 pb-6">
         <div>
           <h4 className="text-xl font-bold text-white tracking-wide">Activity History</h4>
           <p className="text-sm text-gray-500 font-medium mt-1">Scroll horizontally to view past dates</p>
         </div>
-        
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto relative">
-          
+
           {/* Custom Date Search Trigger */}
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setIsCalendarOpen(!isCalendarOpen)}
               className="flex items-center bg-black/50 border border-white/10 hover:border-white/20 focus:border-yellow-500/50 rounded-xl px-4 py-2 transition-all duration-300 w-full sm:w-44 shadow-inner group"
             >
@@ -155,7 +159,7 @@ export default function WeeklyHoursGraph() {
 
             <AnimatePresence>
               {searchDate && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, x: -10, width: 0 }}
                   animate={{ opacity: 1, x: 0, width: 'auto' }}
                   exit={{ opacity: 0, x: -10, width: 0 }}
@@ -166,7 +170,7 @@ export default function WeeklyHoursGraph() {
                       {formatTooltipTime((dailyMap[searchDate] || 0) / 3600)}
                     </span>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setSearchDate('')}
                     className="ml-2 p-1.5 hover:bg-white/10 rounded-lg text-gray-500 hover:text-red-400 transition-colors"
                     title="Clear search"
@@ -183,7 +187,7 @@ export default function WeeklyHoursGraph() {
             {isCalendarOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsCalendarOpen(false)} />
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -224,11 +228,10 @@ export default function WeeklyHoursGraph() {
                         <button
                           key={day}
                           onClick={() => handleDateSelect(day)}
-                          className={`relative h-8 rounded-lg text-xs font-semibold flex items-center justify-center transition-all ${
-                            isSelected 
-                              ? 'bg-yellow-400 text-black shadow-md' 
-                              : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                          }`}
+                          className={`relative h-8 rounded-lg text-xs font-semibold flex items-center justify-center transition-all ${isSelected
+                            ? 'bg-yellow-400 text-black shadow-md'
+                            : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                            }`}
                         >
                           {day}
                           {/* Data Indicator Dot */}
@@ -252,9 +255,8 @@ export default function WeeklyHoursGraph() {
               <button
                 key={tf.id}
                 onClick={() => setTimeframe(tf.id)}
-                className={`flex-1 sm:flex-none relative px-4 py-1.5 text-xs font-bold rounded-lg transition-colors z-10 ${
-                  timeframe === tf.id ? 'text-black' : 'text-gray-400 hover:text-white'
-                }`}
+                className={`flex-1 sm:flex-none relative px-4 py-1.5 text-xs font-bold rounded-lg transition-colors z-10 ${timeframe === tf.id ? 'text-black' : 'text-gray-400 hover:text-white'
+                  }`}
               >
                 {timeframe === tf.id && (
                   <motion.div
@@ -281,30 +283,42 @@ export default function WeeklyHoursGraph() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.03)" />
-                <XAxis 
-                  dataKey="label" 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 500 }}
-                  interval={0} 
-                  angle={timeframe === '7D' ? 0 : -35} 
+                  interval={0}
+                  angle={timeframe === '7D' ? 0 : -35}
                   textAnchor={timeframe === '7D' ? 'middle' : 'end'}
                   dy={15}
                   dx={timeframe === '7D' ? 0 : -5}
                 />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#6b7280', fontSize: 11 }}
-                  tickFormatter={(value) => `${value}h`}
-                  dx={-10}
+                <YAxis
+                  width={75}
+                  domain={[0, 'auto']}
+
+                  tick={{ fontSize: 12, fill: '#a1a1aa' }}
+                  tickMargin={5}
+
+                  tickFormatter={(value) => {
+                    if (value === 0) return '0h';
+
+                    const totalMinutes = Math.round(value * 60);
+                    const h = Math.floor(totalMinutes / 60);
+                    const m = totalMinutes % 60;
+
+                    if (h === 0) return `${m}m`;
+                    if (m === 0) return `${h}h`;
+                    return `${h}h ${m}m`;
+                  }}
                 />
                 <Tooltip
                   cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
-                      if (data.isFuture) return null; 
+                      if (data.isFuture) return null;
 
                       return (
                         <div className="bg-[#1e1e1e]/95 border border-white/10 p-4 rounded-xl shadow-2xl backdrop-blur-xl">
@@ -319,8 +333,8 @@ export default function WeeklyHoursGraph() {
                     return null;
                   }}
                 />
-                <Bar 
-                  dataKey="hours" 
+                <Bar
+                  dataKey="hours"
                   radius={[4, 4, 4, 4]}
                   onMouseEnter={(_, index) => setActiveIndex(index)}
                   onMouseLeave={() => setActiveIndex(null)}
@@ -331,9 +345,9 @@ export default function WeeklyHoursGraph() {
                       return <Cell key={`cell-${index}`} fill="rgba(255,255,255,0.02)" />;
                     }
                     return (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={activeIndex === index ? '#facc15' : 'url(#colorHours)'} 
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={activeIndex === index ? '#facc15' : 'url(#colorHours)'}
                         className="transition-all duration-300 cursor-pointer"
                       />
                     );
@@ -342,8 +356,8 @@ export default function WeeklyHoursGraph() {
 
                 <defs>
                   <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f97316" stopOpacity={1}/>
-                    <stop offset="100%" stopColor="#eab308" stopOpacity={0.6}/>
+                    <stop offset="0%" stopColor="#f97316" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#eab308" stopOpacity={0.6} />
                   </linearGradient>
                 </defs>
               </BarChart>

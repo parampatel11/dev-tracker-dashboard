@@ -83,7 +83,7 @@ export default function Home() {
         </motion.section>
 
         {/* Section: GitHub Activity */}
-        <motion.section variants={itemVariants} id="github" className="scroll-mt-32 pt-4">
+        <motion.section variants={itemVariants} id="git" className="scroll-mt-32 pt-4">
           <div className="w-full">
             <GitHubDashboard />
           </div>

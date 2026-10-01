@@ -1,20 +1,8 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import { VSCodeStat } from '@/models/VSCodeStat'; // <-- Using your actual model!
 
 export const dynamic = 'force-dynamic';
-
-const TelemetrySchema = new mongoose.Schema({
-  date: { type: String, required: true },
-  filesModified: { type: Number, default: 0 },
-  languages: [
-    {
-      name: { type: String, required: true },
-      timeSeconds: { type: Number, default: 0 }
-    }
-  ]
-});
-
-const Telemetry = mongoose.models.Telemetry || mongoose.model('Telemetry', TelemetrySchema);
 
 async function connectDB() {
   if (mongoose.connection.readyState >= 1) return;
@@ -23,33 +11,64 @@ async function connectDB() {
   await mongoose.connect(MONGODB_URI);
 }
 
-// GET: Serves data to FileActivityList and LanguageDonutChart
 export async function GET() {
   try {
     await connectDB();
-    // Fetch recent telemetry records from MongoDB
-    const records = await Telemetry.find({}).sort({ date: -1 }).limit(30);
+    // Fetches from your vscodestats collection
+    const records = await VSCodeStat.find({}).sort({ date: -1 }).limit(30);
+    return NextResponse.json(records || []);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
 
-    // If no records exist yet in MongoDB, return a sample placeholder array so the UI lights up immediately
-    if (!records || records.length === 0) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      return NextResponse.json([
-        {
-          date: todayStr,
-          filesModified: 5,
-          languages: [
-            { name: 'TypeScript', timeSeconds: 7200 },
-            { name: 'React', timeSeconds: 5400 },
-            { name: 'JavaScript', timeSeconds: 1800 },
-            { name: 'JSON', timeSeconds: 900 }
-          ]
-        }
-      ]);
+export async function POST(request: Request) {
+  try {
+    await connectDB();
+    
+    // Security check
+    const authHeader = request.headers.get('authorization');
+    const VSCODE_INGEST_SECRET = process.env.VSCODE_INGEST_SECRET;
+    if (VSCODE_INGEST_SECRET && authHeader !== `Bearer ${VSCODE_INGEST_SECRET}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    return NextResponse.json(records);
+    const body = await request.json();
+    const dateStr = body.date || new Date().toLocaleDateString('en-CA');
+
+    // Fetch today's existing record
+    let stat = await VSCodeStat.findOne({ date: dateStr });
+
+    if (!stat) {
+      // If it's the first sync of the day, create a brand new record
+      stat = new VSCodeStat({
+        date: dateStr,
+        totalTimeSeconds: body.totalTimeSeconds || 0,
+        filesModified: body.filesModified || 0,
+        languages: body.languages || []
+      });
+    } else {
+      // If the record exists, ACCUMULATE the new time (don't overwrite!)
+      stat.totalTimeSeconds += (body.totalTimeSeconds || 0);
+      stat.filesModified += (body.filesModified || 0);
+
+      // Intelligently merge the languages array
+      if (body.languages) {
+        body.languages.forEach((incomingLang: any) => {
+          const existingLang = stat.languages.find((l: any) => l.name === incomingLang.name);
+          if (existingLang) {
+            existingLang.timeSeconds += incomingLang.timeSeconds; // Add to existing language
+          } else {
+            stat.languages.push(incomingLang); // Or add a new language if you switched tech
+          }
+        });
+      }
+    }
+
+    await stat.save();
+
+    return NextResponse.json({ success: true, data: stat });
   } catch (error: any) {
-    console.error('API /vscode/stats Error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -8,8 +8,7 @@ export default function HeroStats() {
   const [vscodeStats, setVscodeStats] = useState({
     hours: 0,
     minutes: 0,
-    topTech: 'JS',
-    techPercent: 0,
+    topTech: 'N/A',
     filesModified: 0,
     isLoading: true
   });
@@ -47,21 +46,57 @@ export default function HeroStats() {
       }
     }
 
-    // 2. Fetch VS Code Telemetry from your MongoDB backend
+    // 2. Fetch VS Code Telemetry from your REAL MongoDB backend
     async function fetchTelemetry() {
       try {
-        // REPLACE THIS URL with your actual backend endpoint when ready
-        const res = await fetch('/api/vscode-telemetry');
+        // Cache: 'no-store' forces fresh data every time so it never gets stuck
+        const res = await fetch('/api/vscode/stats', { cache: 'no-store' });
+        
         if (res.ok) {
-          const data = await res.json();
-          setVscodeStats({
-            hours: data.hours || 0,
-            minutes: data.minutes || 0,
-            topTech: data.topTech || 'N/A',
-            techPercent: data.techPercent || 0,
-            filesModified: data.filesModified || 0,
-            isLoading: false
-          });
+          const allData = await res.json();
+          
+          // Explicitly search for today's date
+          const todayStr = new Date().toLocaleDateString('en-CA');
+          const todayData = allData.find((d: any) => d.date === todayStr) || (allData.length > 0 ? allData[0] : null);
+
+          if (todayData) {
+            // Convert total seconds to hours and minutes
+            const totalSeconds = todayData.totalTimeSeconds || 0;
+            const displayHours = Math.floor(totalSeconds / 3600);
+            const displayMinutes = Math.floor((totalSeconds % 3600) / 60);
+            
+            // Find the language with the most time
+            let topTechName = 'N/A';
+            if (todayData.languages && todayData.languages.length > 0) {
+              const topLang = todayData.languages.reduce((prev: any, current: any) => 
+                (prev.timeSeconds > current.timeSeconds) ? prev : current
+              );
+              
+              // Clean up VS Code's internal language IDs
+              const langMap: Record<string, string> = {
+                'typescriptreact': 'TypeScript',
+                'javascriptreact': 'JavaScript',
+                'typescript': 'TypeScript',
+                'javascript': 'JavaScript',
+                'html': 'HTML',
+                'css': 'CSS',
+                'json': 'JSON'
+              };
+              
+              const rawName = topLang.name.toLowerCase();
+              topTechName = langMap[rawName] || topLang.name;
+            }
+
+            setVscodeStats({
+              hours: displayHours,
+              minutes: displayMinutes,
+              topTech: topTechName,
+              filesModified: todayData.filesModified || 0,
+              isLoading: false
+            });
+          } else {
+            setVscodeStats(prev => ({ ...prev, isLoading: false }));
+          }
         } else {
           setVscodeStats(prev => ({ ...prev, isLoading: false }));
         }
@@ -78,66 +113,59 @@ export default function HeroStats() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
       
       {/* Stat 1: Time */}
-      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-6 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-orange-500/20 hover:border-orange-500/40 transition-all duration-300 cursor-default">
+      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-5 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-orange-500/20 hover:border-orange-500/40 transition-all duration-300 cursor-default">
         <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        <p className="text-sm text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Today's Time</p>
-        <h2 className="text-4xl font-black text-white mt-3 relative z-10 flex items-baseline gap-1">
+        <p className="text-xs text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Today's Time</p>
+        <h2 className="text-3xl font-black text-white mt-2 relative z-10 flex items-baseline gap-1">
           {vscodeStats.isLoading ? (
-            <span className="w-16 h-10 bg-white/10 animate-pulse rounded-lg" />
+            <span className="w-16 h-8 bg-white/10 animate-pulse rounded-lg" />
           ) : (
             <>
-              {vscodeStats.hours}<span className="text-orange-400 text-2xl font-bold">h</span> 
-              {vscodeStats.minutes}<span className="text-orange-400 text-2xl font-bold">m</span>
+              {vscodeStats.hours}<span className="text-orange-400 text-lg font-bold">h</span> 
+              {vscodeStats.minutes}<span className="text-orange-400 text-lg font-bold">m</span>
             </>
           )}
         </h2>
       </motion.div>
       
       {/* Stat 2: Top Tech */}
-      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-6 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-yellow-400/20 hover:border-yellow-400/40 transition-all duration-300 cursor-default">
+      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-5 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-yellow-400/20 hover:border-yellow-400/40 transition-all duration-300 cursor-default">
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        <p className="text-sm text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Top Tech</p>
-        <h2 className="text-4xl font-black text-white mt-3 relative z-10 flex items-center gap-3">
+        <p className="text-xs text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Top Tech For Today</p>
+        <h2 className="text-3xl font-black text-white mt-2 relative z-10 flex items-center gap-3">
           {vscodeStats.isLoading ? (
-            <span className="w-24 h-10 bg-white/10 animate-pulse rounded-lg" />
+            <span className="w-24 h-8 bg-white/10 animate-pulse rounded-lg" />
           ) : (
-            <>
-              <span className="text-yellow-400">{vscodeStats.topTech}</span>
-              {vscodeStats.techPercent > 0 && (
-                <span className="text-lg text-gray-400 font-medium tracking-normal bg-white/5 px-3 py-1 rounded-full border border-white/5">
-                  {vscodeStats.techPercent}%
-                </span>
-              )}
-            </>
+            <span className="text-yellow-400">{vscodeStats.topTech}</span>
           )}
         </h2>
       </motion.div>
 
       {/* Stat 3: Files */}
-      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-6 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-green-500/20 hover:border-green-500/40 transition-all duration-300 cursor-default">
+      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-5 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-green-500/20 hover:border-green-500/40 transition-all duration-300 cursor-default">
         <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        <p className="text-sm text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Files Modified</p>
-        <h2 className="text-4xl font-black text-white mt-3 relative z-10 flex items-baseline gap-2">
+        <p className="text-xs text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Files Modified</p>
+        <h2 className="text-3xl font-black text-white mt-2 relative z-10 flex items-baseline gap-1">
           {vscodeStats.isLoading ? (
-             <span className="w-12 h-10 bg-white/10 animate-pulse rounded-lg" />
+             <span className="w-12 h-8 bg-white/10 animate-pulse rounded-lg" />
           ) : (
             <>
-              {vscodeStats.filesModified} <span className="text-green-400 text-xl font-bold">files</span>
+              {vscodeStats.filesModified} <span className="text-green-400 text-lg font-bold">files</span>
             </>
           )}
         </h2>
       </motion.div>
 
       {/* Stat 4: Live GitHub Streak */}
-      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-6 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-white/20 hover:border-white/30 transition-all duration-300 cursor-default">
+      <motion.div whileHover={{ y: -5, scale: 1.02 }} className="p-5 rounded-2xl border border-white/5 bg-[#1e1e1e]/80 backdrop-blur-xl relative overflow-hidden group shadow-xl hover:shadow-white/20 hover:border-white/30 transition-all duration-300 cursor-default">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        <p className="text-sm text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Live Streak</p>
-        <h2 className="text-4xl font-black text-white mt-3 relative z-10 flex items-baseline gap-2">
+        <p className="text-xs text-gray-400 font-semibold tracking-wide relative z-10 uppercase">Live Streak</p>
+        <h2 className="text-3xl font-black text-white mt-2 relative z-10 flex items-baseline gap-1">
           {githubStreak === null ? (
-            <span className="w-12 h-10 bg-white/10 animate-pulse rounded-lg" />
+            <span className="w-12 h-8 bg-white/10 animate-pulse rounded-lg" />
           ) : (
             <>
-              {githubStreak} <span className="text-gray-300 text-xl font-bold">days</span>
+              {githubStreak} <span className="text-gray-300 text-lg font-bold">days</span>
             </>
           )}
         </h2>
